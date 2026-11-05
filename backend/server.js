@@ -12,6 +12,10 @@ const User = require("./src/models/User");
 
 const app = express();
 
+// =====================================
+// CORS CONFIGURATION
+// =====================================
+
 const allowedOrigins = (
   process.env.CLIENT_URL || "http://localhost:5173"
 )
@@ -34,10 +38,34 @@ app.use(
         new Error(`CORS blocked for origin: ${origin}`)
       );
     },
+    credentials: true
   })
 );
 
 app.use(express.json({ limit: "1mb" }));
+
+// =====================================
+// HEALTH CHECK ROUTES
+// =====================================
+
+app.get("/", (req, res) => {
+  res.status(200).json({
+    status: "ok",
+    service: "issue-tracker-api",
+    message: "Backend is running successfully"
+  });
+});
+
+app.get("/api/health", (req, res) => {
+  res.status(200).json({
+    status: "ok",
+    service: "issue-tracker-api"
+  });
+});
+
+// =====================================
+// DATABASE INITIALIZATION
+// =====================================
 
 let initializationPromise;
 
@@ -46,7 +74,11 @@ async function initializeDatabase() {
     initializationPromise = (async () => {
       await connectDB();
 
-      if (process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD) {
+      // Create initial admin if configured
+      if (
+        process.env.ADMIN_EMAIL &&
+        process.env.ADMIN_PASSWORD
+      ) {
         const email = process.env.ADMIN_EMAIL.toLowerCase();
 
         const exists = await User.findOne({ email });
@@ -63,7 +95,7 @@ async function initializeDatabase() {
             name: process.env.ADMIN_NAME || "Admin",
             email,
             password,
-            role: "admin",
+            role: "admin"
           });
 
           console.log("Initial admin account created.");
@@ -78,41 +110,68 @@ async function initializeDatabase() {
   return initializationPromise;
 }
 
+// =====================================
+// DATABASE MIDDLEWARE
+// =====================================
+
 app.use(async (req, res, next) => {
   try {
     await initializeDatabase();
     next();
   } catch (error) {
-    next(error);
+    console.error("Database initialization failed:", error);
+
+    res.status(503).json({
+      message: "Database connection failed",
+      error:
+        process.env.NODE_ENV === "production"
+          ? "Service temporarily unavailable"
+          : error.message
+    });
   }
 });
 
-app.get("/api/health", (req, res) => {
-  res.json({
-    status: "ok",
-    service: "issue-tracker-api",
-  });
-});
+// =====================================
+// API ROUTES
+// =====================================
 
 app.use("/api/auth", authRoutes);
 app.use("/api/issues", issueRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 
-app.use((err, req, res, next) => {
-  console.error(err);
+// =====================================
+// 404 HANDLER
+// =====================================
 
-  res.status(err.status || 500).json({
-    message: err.message || "Internal server error",
+app.use((req, res) => {
+  res.status(404).json({
+    message: "API route not found",
+    path: req.originalUrl
   });
 });
 
-// Run locally, but export the app for Vercel.
+// =====================================
+// GLOBAL ERROR HANDLER
+// =====================================
+
+app.use((err, req, res, next) => {
+  console.error("Server error:", err);
+
+  res.status(err.status || 500).json({
+    message: err.message || "Internal server error"
+  });
+});
+
+// =====================================
+// LOCAL SERVER
+// =====================================
+
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
 
   initializeDatabase()
     .then(() => {
-      app.listen(PORT, () => {
+      app.listen(PORT, "0.0.0.0", () => {
         console.log(`API running on port ${PORT}`);
       });
     })
@@ -121,5 +180,9 @@ if (require.main === module) {
       process.exit(1);
     });
 }
+
+// =====================================
+// VERCEL EXPORT
+// =====================================
 
 module.exports = app;
