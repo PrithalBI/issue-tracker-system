@@ -1,0 +1,12 @@
+const router = require("express").Router();
+const controller = require("../controllers/issueController");
+const { protect, adminOnly } = require("../middleware/auth");
+router.use(protect);
+router.get("/", controller.list);
+router.post("/", controller.create);
+router.get("/users", adminOnly, controller.users);
+router.patch("/:id/assign", adminOnly, controller.assign);
+router.post("/:id/comments", controller.comment);
+router.put("/:id", controller.update);
+router.delete("/:id", controller.remove);
+module.exports = router;
