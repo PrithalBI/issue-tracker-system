@@ -12,7 +12,9 @@ const User = require("./src/models/User");
 
 const app = express();
 
-const allowedOrigins = (process.env.CLIENT_URL || "http://localhost:5173")
+const allowedOrigins = (
+  process.env.CLIENT_URL || "http://localhost:5173"
+)
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
@@ -28,14 +30,15 @@ app.use(
         return callback(null, true);
       }
 
-      return callback(new Error(`CORS blocked for origin: ${origin}`));
+      return callback(
+        new Error(`CORS blocked for origin: ${origin}`)
+      );
     },
   })
 );
 
 app.use(express.json({ limit: "1mb" }));
 
-// Connect to MongoDB and create the admin account if needed.
 let initializationPromise;
 
 async function initializeDatabase() {
@@ -50,6 +53,7 @@ async function initializeDatabase() {
 
         if (!exists) {
           const bcrypt = require("bcryptjs");
+
           const password = await bcrypt.hash(
             process.env.ADMIN_PASSWORD,
             12
@@ -74,7 +78,6 @@ async function initializeDatabase() {
   return initializationPromise;
 }
 
-// Ensure database is ready before handling requests.
 app.use(async (req, res, next) => {
   try {
     await initializeDatabase();
@@ -103,5 +106,20 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Export Express app for Vercel.
+// Run locally, but export the app for Vercel.
+if (require.main === module) {
+  const PORT = process.env.PORT || 5000;
+
+  initializeDatabase()
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`API running on port ${PORT}`);
+      });
+    })
+    .catch((error) => {
+      console.error("Server startup failed:", error);
+      process.exit(1);
+    });
+}
+
 module.exports = app;
